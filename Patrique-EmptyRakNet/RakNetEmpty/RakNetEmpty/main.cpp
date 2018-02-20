@@ -1,8 +1,10 @@
 #include "MessageIdentifiers.h"
 #include "RakPeerInterface.h"
+#include "BitStream.h"
 #include <thread>
 #include <chrono>
 #include <iostream>
+#include <map>
 
 static int SERVER_PORT = 65000;
 static int CLIENT_PORT = 65001;
@@ -14,6 +16,18 @@ bool isServer = false;
 bool isRunning = true;
 
 unsigned short g_totalPlayers = 0;
+
+enum {
+	ID_THEGAME_LOBBY = ID_USER_PACKET_ENUM,
+	ID_THEGAME_ACTION,
+};
+struct SPlayer {
+	std::string name;
+	RakNet::SystemAddress address;
+};
+
+RakNet::SystemAddress g_serverAddress;
+std::map<unsigned long, SPlayer> m_playerMap;
 
 enum NetworkStates {
 	NS_Decision = 0,
@@ -31,6 +45,7 @@ void OnConnectionAccepted(RakNet::Packet* packet) {
 		assert(0);
 	}
 	g_networkState = NS_Lobby;
+	g_serverAddress = packet->systemAddress;
 
 }
 
@@ -61,6 +76,21 @@ void InputHandler() {
 				std::cout << "Client creating socket..." << std::endl;
 			}
 		}
+		else if (g_networkState == NS_Lobby) {
+			std::cout << "If you would like to play this game, Enter your name " << std::endl;
+			std::cout << "If you want to quit, type quit." << std::endl;
+			std::cin >> userInput;
+			if (strcmp(userInput, "quit") == 0) {
+				assert(0);
+			}
+			else {
+				RakNet::BitStream myBitStream;
+				myBitStream.Write((RakNet::MessageID)ID_THEGAME_LOBBY);
+				RakNet::RakString name(userInput);
+				myBitStream.Write(name);
+				g_rakPeerInterface->Send(&myBitStream,HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, false);
+			}
+		}
 		std::this_thread::sleep_for(std::chrono::microseconds(100));
 	}
 }
@@ -79,75 +109,97 @@ unsigned char GetPacketIdentifier(RakNet::Packet *packet)
 		return (unsigned char)packet->data[0];
 }
 
+bool HandleLowLevelPacket(RakNet::Packet* packet) {
+	bool isHandled = true;
+	unsigned char packetIdentifier = GetPacketIdentifier(packet);
+	switch (packetIdentifier) {
+	case ID_DISCONNECTION_NOTIFICATION:
+		// Connection lost normally
+		printf("ID_DISCONNECTION_NOTIFICATION\n");
+		break;
+	case ID_ALREADY_CONNECTED:
+		// Connection lost normally
+		printf("ID_ALREADY_CONNECTED with guid %" PRINTF_64_BIT_MODIFIER "u\n", packet->guid);
+		break;
+	case ID_INCOMPATIBLE_PROTOCOL_VERSION:
+		printf("ID_INCOMPATIBLE_PROTOCOL_VERSION\n");
+		break;
+	case ID_REMOTE_DISCONNECTION_NOTIFICATION: // Server telling the clients of another client disconnecting gracefully.  You can manually broadcast this in a peer to peer enviroment if you want.
+		printf("ID_REMOTE_DISCONNECTION_NOTIFICATION\n");
+		break;
+	case ID_REMOTE_CONNECTION_LOST: // Server telling the clients of another client disconnecting forcefully.  You can manually broadcast this in a peer to peer enviroment if you want.
+		printf("ID_REMOTE_CONNECTION_LOST\n");
+		break;
+	case ID_NEW_INCOMING_CONNECTION:
+	case ID_REMOTE_NEW_INCOMING_CONNECTION: // Server telling the clients of another client connecting.  You can manually broadcast this in a peer to peer enviroment if you want.
+		printf("ID_REMOTE_NEW_INCOMING_CONNECTION\n");
+		OnIncomingConnection(packet);
+		break;
+	case ID_CONNECTION_BANNED: // Banned from this server
+		printf("We are banned from this server.\n");
+		break;
+	case ID_CONNECTION_ATTEMPT_FAILED:
+		printf("Connection attempt failed\n");
+		break;
+	case ID_NO_FREE_INCOMING_CONNECTIONS:
+		// Sorry, the server is full.  I don't do anything here but
+		// A real app should tell the user
+		printf("ID_NO_FREE_INCOMING_CONNECTIONS\n");
+		break;
+
+	case ID_INVALID_PASSWORD:
+		printf("ID_INVALID_PASSWORD\n");
+		break;
+
+	case ID_CONNECTION_LOST:
+		// Couldn't deliver a reliable packet - i.e. the other system was abnormally
+		// terminated
+		printf("ID_CONNECTION_LOST\n");
+		break;
+
+	case ID_CONNECTION_REQUEST_ACCEPTED:
+		// This tells the client they have connected
+		printf("ID_CONNECTION_REQUEST_ACCEPTED to %s with GUID %s\n", packet->systemAddress.ToString(true), packet->guid.ToString());
+		printf("My external address is %s\n", g_rakPeerInterface->GetExternalID(packet->systemAddress).ToString(true));
+		OnConnectionAccepted(packet);
+		break;
+	case ID_CONNECTED_PING:
+	case ID_UNCONNECTED_PING:
+		printf("Ping from %s\n", packet->systemAddress.ToString(true));
+		break;
+	default:
+		isHandled = false;
+	}
+	return isHandled;
+}
 void PacketHandler() {
 	while (isRunning) {
 		for (RakNet::Packet* packet = g_rakPeerInterface->Receive();packet != nullptr; g_rakPeerInterface->DeallocatePacket(packet), packet = g_rakPeerInterface->Receive())
 		{
 			// We got a packet, get the identifier with our handy function
-			unsigned char packetIdentifier = GetPacketIdentifier(packet);
-
-			// Check if this is a network message packet
-			switch (packetIdentifier)
-			{
-			case ID_DISCONNECTION_NOTIFICATION:
-				// Connection lost normally
-				printf("ID_DISCONNECTION_NOTIFICATION\n");
+			
+			if (!HandleLowLevelPacket(packet)) {
+				unsigned char packetIdentifier = GetPacketIdentifier(packet);
+				switch (packetIdentifier)
+				{
+				case ID_THEGAME_LOBBY:
+				{
+					RakNet::BitStream myBitStream(packet->data, packet->length, false);
+					RakNet::MessageID messageID;
+					myBitStream.Read(messageID);
+					RakNet::RakString userName;
+					myBitStream.Read(userName);
+					std::cout << userName << " is ready to play!!!" << std::endl;
+				}
 				break;
-			case ID_ALREADY_CONNECTED:
-				// Connection lost normally
-				printf("ID_ALREADY_CONNECTED with guid %" PRINTF_64_BIT_MODIFIER "u\n", packet->guid);
-				break;
-			case ID_INCOMPATIBLE_PROTOCOL_VERSION:
-				printf("ID_INCOMPATIBLE_PROTOCOL_VERSION\n");
-				break;
-			case ID_REMOTE_DISCONNECTION_NOTIFICATION: // Server telling the clients of another client disconnecting gracefully.  You can manually broadcast this in a peer to peer enviroment if you want.
-				printf("ID_REMOTE_DISCONNECTION_NOTIFICATION\n");
-				break;
-			case ID_REMOTE_CONNECTION_LOST: // Server telling the clients of another client disconnecting forcefully.  You can manually broadcast this in a peer to peer enviroment if you want.
-				printf("ID_REMOTE_CONNECTION_LOST\n");
-				break;
-			case ID_NEW_INCOMING_CONNECTION:
-			case ID_REMOTE_NEW_INCOMING_CONNECTION: // Server telling the clients of another client connecting.  You can manually broadcast this in a peer to peer enviroment if you want.
-				printf("ID_REMOTE_NEW_INCOMING_CONNECTION\n");
-				OnIncomingConnection(packet);
-				break;
-			case ID_CONNECTION_BANNED: // Banned from this server
-				printf("We are banned from this server.\n");
-				break;
-			case ID_CONNECTION_ATTEMPT_FAILED:
-				printf("Connection attempt failed\n");
-				break;
-			case ID_NO_FREE_INCOMING_CONNECTIONS:
-				// Sorry, the server is full.  I don't do anything here but
-				// A real app should tell the user
-				printf("ID_NO_FREE_INCOMING_CONNECTIONS\n");
-				break;
-
-			case ID_INVALID_PASSWORD:
-				printf("ID_INVALID_PASSWORD\n");
-				break;
-
-			case ID_CONNECTION_LOST:
-				// Couldn't deliver a reliable packet - i.e. the other system was abnormally
-				// terminated
-				printf("ID_CONNECTION_LOST\n");
-				break;
-
-			case ID_CONNECTION_REQUEST_ACCEPTED:
-				// This tells the client they have connected
-				printf("ID_CONNECTION_REQUEST_ACCEPTED to %s with GUID %s\n", packet->systemAddress.ToString(true), packet->guid.ToString());
-				printf("My external address is %s\n", g_rakPeerInterface->GetExternalID(packet->systemAddress).ToString(true));
-				OnConnectionAccepted(packet);
-				break;
-			case ID_CONNECTED_PING:
-			case ID_UNCONNECTED_PING:
-				printf("Ping from %s\n", packet->systemAddress.ToString(true));
-				break;
-			default:
-				// It's a client, so just show the message
-				printf("%s\n", packet->data);
-				break;
+				default:
+					// It's a client, so just show the message
+					printf("%s\n", packet->data);
+					break;
+				}
 			}
+			// Check if this is a network message packet
+			
 		}
 		std::this_thread::sleep_for(std::chrono::microseconds(100));
 	}
