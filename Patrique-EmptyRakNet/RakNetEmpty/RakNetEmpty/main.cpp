@@ -338,12 +338,15 @@ int main()
 
 				RakNet::StartupResult result = g_rakPeerInterface->Startup(8, &socketDescriptor, 1);
 				assert(result == RakNet::RAKNET_STARTED);
+
+				g_networkState = NS_Started;
+
 				g_rakPeerInterface->SetOccasionalPing(true);
 				//"127.0.0.1" = local host = your machines address
 				RakNet::ConnectionAttemptResult car = g_rakPeerInterface->Connect("127.0.0.1", SERVER_PORT, nullptr, 0);
 				RakAssert(car == RakNet::CONNECTION_ATTEMPT_STARTED);
 				std::cout << "client attempted connection..." << std::endl;
-				g_networkState = NS_Started;
+				
 			}
 		}
 
