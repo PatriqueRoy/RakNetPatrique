@@ -5,6 +5,7 @@
 #include <chrono>
 #include <iostream>
 #include <map>
+#include <mutex>
 
 static unsigned int SERVER_PORT = 65000;
 static unsigned int CLIENT_PORT = 65001;
@@ -28,18 +29,27 @@ int areReady = 0;
 RakNet::RakPeerInterface *g_rakPeerInterface = nullptr;
 RakNet::SystemAddress g_serverAddress;
 
+std::mutex g_networkState_mutex;
 NetworkState g_networkState = NS_Init;
 
 enum {
 	ID_THEGAME_LOBBY_READY = ID_USER_PACKET_ENUM,
+	ID_PLAYER_READY,
 	ID_THEGAME_LOBBY_READY_ALL,
 	ID_THEGAME_START,
+};
+
+enum PlayerClass {
+	Mage = 0,
+	Rogue,
+	Cleric,
 };
 
 struct SPlayer
 {
 	std::string name;
 	RakNet::SystemAddress address;
+	PlayerClass P_class;
 };
 
 std::map<unsigned long, SPlayer> m_players;
@@ -82,20 +92,35 @@ void OnLobbyReady(RakNet::Packet* packet)
 	player.name = userName;
 	player.address = packet->systemAddress;
 	std::cout << player.name.c_str() << " is ready!" << std::endl;
+	for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
+
+		if (guid == it->first) {
+			continue;
+		}
+		SPlayer& player = it->second;
+
+		RakNet::BitStream wbs;
+		wbs.Write((RakNet::MessageID)ID_PLAYER_READY);
+		RakNet::RakString name(player.name.c_str());
+		wbs.Write(name);
+
+		g_rakPeerInterface->Send(&wbs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
+	}
+	RakNet::BitStream wbs;
+	wbs.Write((RakNet::MessageID)ID_PLAYER_READY);
+	RakNet::RakString name(player.name.c_str());
+	wbs.Write(name);
+	g_rakPeerInterface->Send(&wbs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, true);
+
 	areReady++;
 	if (areReady == 3) {
 		NetworkState ns = NS_CharacterSelection;
 		RakNet::BitStream bs;
 		bs.Write((RakNet::MessageID)ID_THEGAME_LOBBY_READY_ALL);
 		bs.Write(ns);
-
-		for (auto const& x : m_players)
-		{
-			std::cout << "test";
-			g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
-		}
 	}
 }
+
 void OnLobbyReadyAll(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
@@ -104,6 +129,16 @@ void OnLobbyReadyAll(RakNet::Packet* packet) {
 	bs.Read(ns);
 
 	g_networkState = ns;
+}
+
+void DisplayPlayerReady(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString userName;
+	bs.Read(userName);
+
+	std::cout << userName << " Has Joined." << std::endl;
 }
 
 unsigned char GetPacketIdentifier(RakNet::Packet *packet)
@@ -253,13 +288,16 @@ void PacketHandler()
 				case ID_THEGAME_LOBBY_READY_ALL:
 					OnLobbyReadyAll(packet);
 					break;
+				case ID_PLAYER_READY:
+					DisplayPlayerReady(packet);
+					break;
 				default:
 					break;
 				}
 			}
 		}
 
-		std::this_thread::sleep_for(std::chrono::microseconds(100));
+		std::this_thread::sleep_for(std::chrono::microseconds(1000));
 	}
 
 
@@ -302,7 +340,7 @@ int main()
 				assert(result == RakNet::RAKNET_STARTED);
 				g_rakPeerInterface->SetOccasionalPing(true);
 				//"127.0.0.1" = local host = your machines address
-				RakNet::ConnectionAttemptResult car = g_rakPeerInterface->Connect("192.168.0.244", SERVER_PORT, nullptr, 0);
+				RakNet::ConnectionAttemptResult car = g_rakPeerInterface->Connect("127.0.0.1", SERVER_PORT, nullptr, 0);
 				RakAssert(car == RakNet::CONNECTION_ATTEMPT_STARTED);
 				std::cout << "client attempted connection..." << std::endl;
 				g_networkState = NS_Started;

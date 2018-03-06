@@ -1,3 +1,4 @@
 ﻿  main.cpp
-c:\users\patrique\documents\github\raknetpatrique\patrique-emptyraknet\raknetempty\raknetempty\main.cpp(180): warning C4477: 'printf' : format string '%I64u' requires an argument of type 'unsigned __int64', but variadic argument 1 has type 'RakNet::RakNetGUID'
-  RakNetEmpty.vcxproj -> C:\Users\Patrique\Documents\GitHub\RakNetPatrique\Patrique-EmptyRakNet\RakNetEmpty\Debug\RakNetEmpty.exe
+c:\users\tech\desktop\raknetpatrique\patrique-emptyraknet\raknetempty\raknetempty\main.cpp(215): warning C4477: 'printf' : format string '%I64u' requires an argument of type 'unsigned __int64', but variadic argument 1 has type 'RakNet::RakNetGUID'
+  RakNetEmpty.vcxproj -> C:\Users\Tech\Desktop\RakNetPatrique\Patrique-EmptyRakNet\RakNetEmpty\Debug\RakNetEmpty.exe
+  RakNetEmpty.vcxproj -> C:\Users\Tech\Desktop\RakNetPatrique\Patrique-EmptyRakNet\RakNetEmpty\Debug\RakNetEmpty.pdb (Partial PDB)
