@@ -19,6 +19,7 @@ enum NetworkState
 	NS_Lobby,
 	NS_Pending,
 	NS_CharacterSelection,
+	NS_GAME,
 };
 
 bool isServer = false;
@@ -38,11 +39,13 @@ enum {
 	ID_PLAYER_IN_LOBBY,
 	ID_THEGAME_LOBBY_READY_ALL,
 	ID_PLAYER_CLASS,
+	ID_PLAYER_CHARACTER,
 	ID_THEGAME_START,
 };
 
 enum PlayerClass {
-	Mage = 0,
+	empty = 0,
+	Mage,
 	Rogue,
 	Warrior,
 };
@@ -52,6 +55,9 @@ struct SPlayer
 	std::string name;
 	RakNet::SystemAddress address;
 	PlayerClass P_class;
+	float health;
+	float attack;
+	float heal;
 };
 
 std::map<unsigned long, SPlayer> m_players;
@@ -100,7 +106,6 @@ void OnLobbyReady(RakNet::Packet* packet)
 			continue;
 		}
 		SPlayer& player = it->second;
-
 		RakNet::BitStream wbs;
 		wbs.Write((RakNet::MessageID)ID_PLAYER_IN_LOBBY);
 		RakNet::RakString name(player.name.c_str());
@@ -122,9 +127,91 @@ void OnLobbyReady(RakNet::Packet* packet)
 			bs.Write(ns);
 
 			g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, true);
+			areReady = 0;
 	}
 }
 
+void OnClassSelect(RakNet::Packet* packet) {
+	unsigned long guid = RakNet::RakNetGUID::ToUint32(packet->guid);
+	std::map<unsigned long, SPlayer>::iterator it = m_players.find(guid);
+
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString Pclass;
+	bs.Read(Pclass);
+
+	SPlayer& player = it->second;
+	if (strcmp(Pclass, "mage") == 0) {
+		player.P_class = Mage;
+		player.health = 10.0f;
+		player.attack = 5.0f;
+		player.heal = 6.0f;
+		std::cout << player.name.c_str() << " The Mage is ready!" << std::endl;
+	}
+	else if (strcmp(Pclass, "warrior") == 0) {
+		player.P_class = Warrior;
+		player.health = 20.0f;
+		player.attack = 4.0f;
+		player.heal = 4.0f;
+		std::cout << player.name.c_str() << " The Warrior is ready!" << std::endl;
+	}
+	else if (strcmp(Pclass, "rogue") == 0) {
+		player.P_class = Rogue;
+		player.health = 15.0f;
+		player.attack = 8.0f;
+		player.heal = 2.0f;
+		std::cout << player.name.c_str() << " The Rogue is ready!" << std::endl;
+	}
+	areReady++;
+	if (areReady == 3) {
+
+		for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
+
+			SPlayer& player = it->second;
+			RakNet::BitStream wbs2;
+			wbs2.Write((RakNet::MessageID)ID_PLAYER_CHARACTER);
+			RakNet::RakString name(player.name.c_str());
+			wbs2.Write(name);
+			PlayerClass PClass = player.P_class;
+			wbs2.Write(PClass);
+			for (auto const& x : m_players)
+			{
+				if (x.second.P_class == PClass) {
+					continue;
+				}
+				g_rakPeerInterface->Send(&wbs2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+			}
+		}
+
+		NetworkState ns = NS_GAME;
+		RakNet::BitStream bs;
+		bs.Write((RakNet::MessageID)ID_THEGAME_LOBBY_READY_ALL);
+		bs.Write(ns);
+
+		g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, true);
+	}
+	
+}
+void OnClassReady(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString userName;
+	bs.Read(userName);
+	PlayerClass Pclass;
+	bs.Read(Pclass);
+
+	if (Pclass == Warrior) {
+		std::cout << userName << " picked warrior." << std::endl;
+	}
+	else if (Pclass == Rogue) {
+		std::cout << userName << " picked rogue." << std::endl;
+	}
+	else if (Pclass == Mage) {
+		std::cout << userName << " picked mage." << std::endl;
+	}
+}
 void OnLobbyReadyAll(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
@@ -205,10 +292,27 @@ void InputHandler()
 		else if (g_networkState == NS_CharacterSelection)
 		{
 			std::cout << "Select your class:" << std::endl 
-			<< "'warrior' has the most health but does least amount of damage." << std::endl
-			<< "'rogue' has Average health and damage." << std::endl
-			<< "'mage' has the least amount of health but does the most damage." << std::endl;
+			<< "'warrior' Health: ***  Attack: *  Heal: **" << std::endl
+			<< "'rogue' Health: **  Attack: ***  Heal: *" << std::endl
+			<< "'mage' Health: *  Attack: **  Heal: ***" << std::endl;
 			std::cin >> userInput;
+
+			if (strcmp(userInput, "warrior") == 0 || strcmp(userInput, "rogue") == 0 || strcmp(userInput, "mage") == 0) {
+				RakNet::BitStream bs;
+				bs.Write((RakNet::MessageID)ID_PLAYER_CLASS);
+				RakNet::RakString Pclass(userInput);
+				bs.Write(Pclass);
+
+				
+				std::cout << "Waiting for other players to select their class..." << std::endl;
+				g_networkState = NS_Pending;
+				g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, false);
+			}
+			
+
+		}
+		else if (g_networkState == NS_GAME) {
+			//std::cout << "test" << std::endl;
 		}
 		std::this_thread::sleep_for(std::chrono::microseconds(100));
 	}
@@ -310,6 +414,12 @@ void PacketHandler()
 					break;
 				case ID_PLAYER_IN_LOBBY:
 					DisplayPlayerInLobby(packet);
+					break;
+				case ID_PLAYER_CLASS:
+					OnClassSelect(packet);
+					break;
+				case ID_PLAYER_CHARACTER:
+					OnClassReady(packet);
 					break;
 				default:
 					break;
