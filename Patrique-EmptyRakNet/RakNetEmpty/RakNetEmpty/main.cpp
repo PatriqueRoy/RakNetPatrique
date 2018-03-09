@@ -19,13 +19,17 @@ enum NetworkState
 	NS_Lobby,
 	NS_Pending,
 	NS_CharacterSelection,
+	NS_PREGAME,
 	NS_GAME,
+	NS_SERVER_GAME,
 };
 
 bool isServer = false;
 bool isRunning = true;
 
 int areReady = 0;
+int playCount = 1;
+int currentTurn = 1;
 
 RakNet::RakPeerInterface *g_rakPeerInterface = nullptr;
 RakNet::SystemAddress g_serverAddress;
@@ -41,6 +45,8 @@ enum {
 	ID_PLAYER_CLASS,
 	ID_PLAYER_CHARACTER,
 	ID_THEGAME_START,
+	ID_TURN,
+	ID_NOT_TURN,
 };
 
 enum PlayerClass {
@@ -58,6 +64,8 @@ struct SPlayer
 	float health;
 	float attack;
 	float heal;
+	int Player;
+	bool turn = false;
 };
 
 std::map<unsigned long, SPlayer> m_players;
@@ -99,6 +107,8 @@ void OnLobbyReady(RakNet::Packet* packet)
 	SPlayer& player = it->second;
 	player.name = userName;
 	player.address = packet->systemAddress;
+	player.Player = playCount;
+	playCount++;
 	std::cout << player.name.c_str() << " is ready!" << std::endl;
 	for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
 
@@ -184,12 +194,13 @@ void OnClassSelect(RakNet::Packet* packet) {
 			}
 		}
 
-		NetworkState ns = NS_GAME;
+		NetworkState ns = NS_PREGAME;
 		RakNet::BitStream bs;
 		bs.Write((RakNet::MessageID)ID_THEGAME_LOBBY_READY_ALL);
 		bs.Write(ns);
 
 		g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, true);
+		g_networkState = NS_SERVER_GAME;
 	}
 	
 }
@@ -241,6 +252,25 @@ void DisplayPlayerInLobby(RakNet::Packet* packet) {
 
 	std::cout << userName << " is in the lobby." << std::endl;
 }
+
+
+void OnPlayerTurn(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+
+	std::cout << "It's your turn." << std::endl << "Enter your command." << std::endl;
+}
+
+void OnNotPlayerTurn(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString userName;
+	bs.Read(userName);
+
+	std::cout << "It's " << userName << "'s turn." << std::endl;
+}
 unsigned char GetPacketIdentifier(RakNet::Packet *packet)
 {
 	if (packet == nullptr)
@@ -270,7 +300,7 @@ void InputHandler()
 		}
 		else if (g_networkState == NS_Lobby)
 		{
-			std::cout << "Enter your name to play or type quit to leave" << std::endl;
+			std::cout << std::endl << "Enter your name to play or type quit to leave" << std::endl;
 			std::cin >> userInput;
 			//quitting is not acceptable in our game, create a crash to teach lesson
 			assert(strcmp(userInput, "quit"));
@@ -280,10 +310,10 @@ void InputHandler()
 			RakNet::RakString name(userInput);
 			bs.Write(name);
 
-			std::cout << "Enter 'ready' when you are prepared to start" << std::endl;
+			std::cout << std::endl << "Enter 'ready' when you are prepared to start" << std::endl;
 			std::cin >> userInput;
 			if (strcmp(userInput, "ready") == 0) {
-				std::cout << "Waiting for other players to ready up..." << std::endl;
+				std::cout << std::endl << "Waiting for other players to ready up..." << std::endl << std::endl;
 				g_networkState = NS_Pending;
 				g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, false);
 			}
@@ -291,7 +321,7 @@ void InputHandler()
 		}
 		else if (g_networkState == NS_CharacterSelection)
 		{
-			std::cout << "Select your class:" << std::endl 
+			std::cout << std::endl << "Select your class:" << std::endl
 			<< "'warrior' Health: ***  Attack: *  Heal: **" << std::endl
 			<< "'rogue' Health: **  Attack: ***  Heal: *" << std::endl
 			<< "'mage' Health: *  Attack: **  Heal: ***" << std::endl;
@@ -304,15 +334,26 @@ void InputHandler()
 				bs.Write(Pclass);
 
 				
-				std::cout << "Waiting for other players to select their class..." << std::endl;
+				std::cout << std::endl << "Waiting for other players to select their class..." << std::endl;
 				g_networkState = NS_Pending;
 				g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, false);
 			}
 			
 
 		}
+		else if (g_networkState == NS_PREGAME) {
+			std::cout << std::endl << "When it is your turn you may use the following commands:"
+			<< std::endl << "Type 'attack' followed by the players name to attack them." 
+			<< std::endl << "Type 'Heal' to restore some of you health." << std::endl;
+			std::cout << "Type 'stat' at any time for Player health" << std::endl;
+			std::cout << "Let the fight begin!!!" << std::endl;
+			g_networkState = NS_GAME;
+		}
 		else if (g_networkState == NS_GAME) {
-			//std::cout << "test" << std::endl;
+			
+		}
+		else if (g_networkState == NS_SERVER_GAME) {
+		
 		}
 		std::this_thread::sleep_for(std::chrono::microseconds(100));
 	}
@@ -421,6 +462,11 @@ void PacketHandler()
 				case ID_PLAYER_CHARACTER:
 					OnClassReady(packet);
 					break;
+				case ID_TURN:
+					OnPlayerTurn(packet);
+					break;
+				case ID_NOT_TURN:
+					OnNotPlayerTurn(packet);
 				default:
 					break;
 				}
@@ -480,6 +526,9 @@ int main()
 			}
 		}
 
+		if (g_networkState == NS_SERVER_GAME) {
+			
+		}
 	}
 
 	//std::cout << "press q and then return to exit" << std::endl;
