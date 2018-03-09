@@ -26,6 +26,7 @@ enum NetworkState
 
 bool isServer = false;
 bool isRunning = true;
+bool Turn = false;
 
 int areReady = 0;
 int playCount = 1;
@@ -65,7 +66,6 @@ struct SPlayer
 	float attack;
 	float heal;
 	int Player;
-	bool turn = false;
 };
 
 std::map<unsigned long, SPlayer> m_players;
@@ -91,6 +91,27 @@ void OnConnectionAccepted(RakNet::Packet* packet)
 	g_serverAddress = packet->systemAddress;
 }
 
+void TurnCycle() {
+	for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
+		if (it->second.Player == currentTurn) {
+			RakNet::BitStream bs;
+			bs.Write((RakNet::MessageID)ID_TURN);
+			bool Pturn = true;
+			bs.Write(Pturn);
+
+			g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, it->second.address, false);
+
+			RakNet::BitStream wbs;
+			wbs.Write((RakNet::MessageID)ID_NOT_TURN);
+			bool OPturn = false;
+			wbs.Write(OPturn);
+			RakNet::RakString name = it->second.name.c_str();
+			wbs.Write(name);
+
+			g_rakPeerInterface->Send(&wbs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, it->second.address, true);
+		}
+	}
+}
 void OnLobbyReady(RakNet::Packet* packet)
 {
 	unsigned long guid = RakNet::RakNetGUID::ToUint32(packet->guid);
@@ -201,6 +222,9 @@ void OnClassSelect(RakNet::Packet* packet) {
 
 		g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, true);
 		g_networkState = NS_SERVER_GAME;
+		std::this_thread::sleep_for(std::chrono::seconds(2));
+		TurnCycle();
+		
 	}
 	
 }
@@ -258,18 +282,26 @@ void OnPlayerTurn(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
 	bs.Read(messageId);
+	bool Pturn;
+	bs.Read(Pturn);
 
-	std::cout << "It's your turn." << std::endl << "Enter your command." << std::endl;
+	Turn = Pturn;
+
+	std::cout << std::endl << "It's your turn." << std::endl << "Enter your command." << std::endl;
 }
 
 void OnNotPlayerTurn(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
 	bs.Read(messageId);
+	bool Pturn;
+	bs.Read(Pturn);
 	RakNet::RakString userName;
 	bs.Read(userName);
 
-	std::cout << "It's " << userName << "'s turn." << std::endl;
+	Turn = Pturn;
+
+	std::cout << std::endl << "It's " << userName << "'s turn." << std::endl;
 }
 unsigned char GetPacketIdentifier(RakNet::Packet *packet)
 {
