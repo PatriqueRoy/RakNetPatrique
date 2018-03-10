@@ -48,6 +48,11 @@ enum {
 	ID_THEGAME_START,
 	ID_TURN,
 	ID_NOT_TURN,
+	ID_PLAYER_HEALTH_S,
+	ID_PLAYER_HEALTH,
+	ID_PLAYER_HEALTH_P,
+	ID_PLAYER_ATTACK,
+	ID_PLAYER_HEAL,
 };
 
 enum PlayerClass {
@@ -90,7 +95,7 @@ void OnConnectionAccepted(RakNet::Packet* packet)
 	g_networkState = NS_Lobby;
 	g_serverAddress = packet->systemAddress;
 }
-
+//server
 void TurnCycle() {
 	for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
 		if (it->second.Player == currentTurn) {
@@ -112,6 +117,35 @@ void TurnCycle() {
 		}
 	}
 }
+//server
+void PlayerTurnAttack(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+
+	std::cout << "Attack" << std::endl;
+	
+	currentTurn++;
+	TurnCycle();
+	if (currentTurn == 3) {
+		currentTurn = 0;
+	}
+}
+//server
+void PlayerTurnHeal(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+
+	std::cout << "Heal" << std::endl;
+
+	currentTurn++;
+	TurnCycle();
+	if (currentTurn == 3) {
+		currentTurn = 0;
+	}
+}
+//server
 void OnLobbyReady(RakNet::Packet* packet)
 {
 	unsigned long guid = RakNet::RakNetGUID::ToUint32(packet->guid);
@@ -161,7 +195,7 @@ void OnLobbyReady(RakNet::Packet* packet)
 			areReady = 0;
 	}
 }
-
+//server
 void OnClassSelect(RakNet::Packet* packet) {
 	unsigned long guid = RakNet::RakNetGUID::ToUint32(packet->guid);
 	std::map<unsigned long, SPlayer>::iterator it = m_players.find(guid);
@@ -228,6 +262,7 @@ void OnClassSelect(RakNet::Packet* packet) {
 	}
 	
 }
+//client
 void OnClassReady(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
@@ -247,6 +282,7 @@ void OnClassReady(RakNet::Packet* packet) {
 		std::cout << userName << " picked mage." << std::endl;
 	}
 }
+//client
 void OnLobbyReadyAll(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
@@ -256,7 +292,7 @@ void OnLobbyReadyAll(RakNet::Packet* packet) {
 
 	g_networkState = ns;
 }
-
+//client
 void DisplayPlayerReady(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
@@ -266,7 +302,7 @@ void DisplayPlayerReady(RakNet::Packet* packet) {
 
 	std::cout << userName << " Has Joined." << std::endl;
 }
-
+//client
 void DisplayPlayerInLobby(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
@@ -277,7 +313,7 @@ void DisplayPlayerInLobby(RakNet::Packet* packet) {
 	std::cout << userName << " is in the lobby." << std::endl;
 }
 
-
+//client
 void OnPlayerTurn(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
@@ -289,7 +325,7 @@ void OnPlayerTurn(RakNet::Packet* packet) {
 
 	std::cout << std::endl << "It's your turn." << std::endl << "Enter your command." << std::endl;
 }
-
+//client
 void OnNotPlayerTurn(RakNet::Packet* packet) {
 	RakNet::BitStream bs(packet->data, packet->length, false);
 	RakNet::MessageID messageId;
@@ -303,6 +339,62 @@ void OnNotPlayerTurn(RakNet::Packet* packet) {
 
 	std::cout << std::endl << "It's " << userName << "'s turn." << std::endl;
 }
+//server
+void DisplayHealthServer(RakNet::Packet* packet) {
+	unsigned long guid = RakNet::RakNetGUID::ToUint32(packet->guid);
+	std::map<unsigned long, SPlayer>::iterator it = m_players.find(guid);
+
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+
+	for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
+
+		SPlayer& player = it->second;
+
+		if (guid == it->first) {
+			RakNet::BitStream wbs2;
+			wbs2.Write((RakNet::MessageID)ID_PLAYER_HEALTH_P);
+			float health = player.health;
+			wbs2.Write(health);
+			g_rakPeerInterface->Send(&wbs2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
+			continue;
+		}
+
+		RakNet::BitStream wbs2;
+		wbs2.Write((RakNet::MessageID)ID_PLAYER_HEALTH);
+		RakNet::RakString name(player.name.c_str());
+		wbs2.Write(name);
+		float health = player.health;
+		wbs2.Write(health);
+		g_rakPeerInterface->Send(&wbs2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
+	}
+}
+//client
+void DisplayHealth(RakNet::Packet* packet) {
+	
+
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString userName;
+	bs.Read(userName);
+	float health;
+	bs.Read(health);
+
+	std::cout << userName << "'s health: " << health << std::endl;
+}
+//client
+void DisplayHealthP(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	float health;
+	bs.Read(health);
+
+	std::cout << "Your health: " << health << std::endl;
+}
+
 unsigned char GetPacketIdentifier(RakNet::Packet *packet)
 {
 	if (packet == nullptr)
@@ -376,16 +468,47 @@ void InputHandler()
 		else if (g_networkState == NS_PREGAME) {
 			std::cout << std::endl << "When it is your turn you may use the following commands:"
 			<< std::endl << "Type 'attack' followed by the players name to attack them." 
-			<< std::endl << "Type 'Heal' to restore some of you health." << std::endl;
+			<< std::endl << "Type 'heal' to restore some of you health." << std::endl;
 			std::cout << "Type 'stat' at any time for Player health" << std::endl;
 			std::cout << "Let the fight begin!!!" << std::endl;
 			g_networkState = NS_GAME;
 		}
 		else if (g_networkState == NS_GAME) {
-			
-		}
-		else if (g_networkState == NS_SERVER_GAME) {
-		
+			std::cin >> userInput;
+			if (Turn == false) {
+				if (strcmp(userInput, "stat") == 0) {
+					RakNet::BitStream bs;
+					bs.Write((RakNet::MessageID)ID_PLAYER_HEALTH_S);
+
+					g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, false);
+				}
+				if (strcmp(userInput, "attack") == 0) {
+					std::cout << "It's not your turn, wait for your turn to attack." << std::endl;
+				}
+				if (strcmp(userInput, "heal") == 0) {
+					std::cout << "It's not your turn, wait for your turn to heal." << std::endl;
+				}
+			}
+			if (Turn == true) {
+				if (strcmp(userInput, "stat") == 0) {
+					RakNet::BitStream bs;
+					bs.Write((RakNet::MessageID)ID_PLAYER_HEALTH_S);
+
+					g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, false);
+				}
+				if (strcmp(userInput, "attack") == 0) {
+					RakNet::BitStream bs;
+					bs.Write((RakNet::MessageID)ID_PLAYER_ATTACK);
+
+					g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, false);
+				}
+				if (strcmp(userInput, "heal") == 0) {
+					RakNet::BitStream bs;
+					bs.Write((RakNet::MessageID)ID_PLAYER_HEAL);
+
+					g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, false);
+				}
+			}
 		}
 		std::this_thread::sleep_for(std::chrono::microseconds(100));
 	}
@@ -499,6 +622,22 @@ void PacketHandler()
 					break;
 				case ID_NOT_TURN:
 					OnNotPlayerTurn(packet);
+					break;
+				case ID_PLAYER_HEALTH_S:
+					DisplayHealthServer(packet);
+					break;
+				case ID_PLAYER_HEALTH:
+					DisplayHealth(packet);
+					break;
+				case ID_PLAYER_HEALTH_P:
+					DisplayHealthP(packet);
+					break;
+				case ID_PLAYER_ATTACK:
+					PlayerTurnAttack(packet);
+					break;
+				case ID_PLAYER_HEAL:
+					PlayerTurnHeal(packet);
+					break;
 				default:
 					break;
 				}
