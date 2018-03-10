@@ -53,6 +53,8 @@ enum {
 	ID_PLAYER_HEALTH_P,
 	ID_PLAYER_ATTACK,
 	ID_PLAYER_HEAL,
+	ID_PLAYER_HEAL_C,
+	ID_PLAYER_HEAL_P,
 };
 
 enum PlayerClass {
@@ -181,12 +183,67 @@ void PlayerTurnHeal(RakNet::Packet* packet) {
 			player.health = player.health + player.heal;
 		}
 	}
+	
+	RakNet::BitStream wbs;
+	wbs.Write((RakNet::MessageID)ID_PLAYER_HEAL_C);
+	RakNet::RakString name = player.name.c_str();
+	wbs.Write(name);
+	PlayerClass Pclass = player.P_class;
+	wbs.Write(Pclass);
+	int Phealth = player.health;
+	wbs.Write(Phealth);
 
+	for (auto const& x : m_players)
+	{
+		if (guid == x.first) {
+			RakNet::BitStream bs;
+			bs.Write((RakNet::MessageID)ID_PLAYER_HEAL_P);
+			int Phealth = player.health;
+			bs.Write(Phealth);
+
+			g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+			continue;
+		}
+		g_rakPeerInterface->Send(&wbs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+	}
+	
 	currentTurn++;
 	TurnCycle();
 	if (currentTurn == 3) {
 		currentTurn = 0;
 	}
+}
+//client
+void PlayerHealMsg(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString userName;
+	bs.Read(userName);
+	PlayerClass Pclass;
+	bs.Read(Pclass);
+	int health;
+	bs.Read(health);
+
+	if (Pclass == Warrior) {
+		std::cout << userName << " the warrior used heal. Health: " << health << std::endl;
+	}
+	if (Pclass == Rogue) {
+		std::cout << userName << " the rogue used heal. Health: " << health << std::endl;
+	}
+	if (Pclass == Mage) {
+		std::cout << userName << " the mage used heal. Health: " << health << std::endl;
+	}
+}
+//client
+void PlayerHealMsgP(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	int health;
+	bs.Read(health);
+
+	std::cout << "You used heal. Health: " << health << std::endl;
 }
 //server
 void OnLobbyReady(RakNet::Packet* packet)
@@ -685,6 +742,12 @@ void PacketHandler()
 					break;
 				case ID_PLAYER_HEAL:
 					PlayerTurnHeal(packet);
+					break;
+				case ID_PLAYER_HEAL_C:
+					PlayerHealMsg(packet);
+					break;
+				case ID_PLAYER_HEAL_P:
+					PlayerHealMsgP(packet);
 					break;
 				default:
 					break;
