@@ -55,6 +55,8 @@ enum {
 	ID_PLAYER_HEAL,
 	ID_PLAYER_HEAL_C,
 	ID_PLAYER_HEAL_P,
+	ID_PLAYER_ATTACK_C,
+	ID_PLAYER_ATTACK_P,
 };
 
 enum PlayerClass {
@@ -140,6 +142,30 @@ void PlayerTurnAttack(RakNet::Packet* packet) {
 			it->second.health = it->second.health - player.attack;
 		}
 	}
+
+	RakNet::BitStream wbs;
+	wbs.Write((RakNet::MessageID)ID_PLAYER_ATTACK_C);
+	RakNet::RakString Ename = player.name.c_str();
+	wbs.Write(Ename);
+	PlayerClass Eclass = player.P_class;
+	wbs.Write(Eclass);
+	int Phealth = player.health;
+	wbs.Write(Phealth);
+
+	for (auto const& x : m_players)
+	{
+		if (guid == x.first) {
+			RakNet::BitStream bs;
+			bs.Write((RakNet::MessageID)ID_PLAYER_ATTACK_P);
+			int Phealth = player.health;
+			bs.Write(Phealth);
+
+			g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+			continue;
+		}
+		g_rakPeerInterface->Send(&wbs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+	}
+
 	currentTurn++;
 	TurnCycle();
 	if (currentTurn == 3) {
@@ -244,6 +270,13 @@ void PlayerHealMsgP(RakNet::Packet* packet) {
 	bs.Read(health);
 
 	std::cout << "You used heal. Health: " << health << std::endl;
+}
+//client
+void PlayerAttackMsg(RakNet::Packet* packet) {
+
+}
+void PlayerAttackMsgP(RakNet::Packet* packet) {
+
 }
 //server
 void OnLobbyReady(RakNet::Packet* packet)
@@ -748,6 +781,12 @@ void PacketHandler()
 					break;
 				case ID_PLAYER_HEAL_P:
 					PlayerHealMsgP(packet);
+					break;
+				case ID_PLAYER_ATTACK_C:
+					break;
+					PlayerAttackMsg(packet);
+				case ID_PLAYER_ATTACK_P:
+					PlayerAttackMsgP(packet);
 					break;
 				default:
 					break;
