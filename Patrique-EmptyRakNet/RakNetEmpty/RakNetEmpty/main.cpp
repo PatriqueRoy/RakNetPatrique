@@ -111,12 +111,13 @@ void TurnCycle() {
 	
 	for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
 		if (it->second.Player == currentTurn) {
+
 			if (DeadPlayers == 2) {
 				RakNet::RakString name;
 				for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
 					if (it->second.alive == true)
 					{
-						name = it->second.name.c_str;
+						name = it->second.name.c_str();
 					}
 				}
 				for (auto const& x : m_players) {
@@ -139,6 +140,9 @@ void TurnCycle() {
 			}
 			if (it->second.alive == false) {
 				currentTurn++;
+				if (currentTurn > 3) {
+					currentTurn = 1;
+				}
 				continue;
 			}
 			RakNet::BitStream bs;
@@ -249,7 +253,7 @@ void PlayerTurnAttack(RakNet::Packet* packet) {
 
 	currentTurn++;
 	TurnCycle();
-	if (currentTurn == 3) {
+	if (currentTurn >= 3) {
 		currentTurn = 0;
 	}
 }
@@ -316,7 +320,7 @@ void PlayerTurnHeal(RakNet::Packet* packet) {
 	
 	currentTurn++;
 	TurnCycle();
-	if (currentTurn == 3) {
+	if (currentTurn >= 3) {
 		currentTurn = 0;
 	}
 }
@@ -549,7 +553,7 @@ void OnClassSelect(RakNet::Packet* packet) {
 			wbs2.Write(PClass);
 			for (auto const& x : m_players)
 			{
-				if (x.second.P_class == PClass) {
+				if (x.second.name == player.name) {
 					continue;
 				}
 				g_rakPeerInterface->Send(&wbs2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
@@ -721,10 +725,20 @@ void OnPlayerDeadP(RakNet::Packet* packet) {
 	std::cout << "You died" << std::endl;
 }
 void OnPlayerWin(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
 
+	std::cout << "The game is over. You WIN!!!!!!" << std::endl;
 }
 void OnPlayerLose(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString name;
+	bs.Read(name);
 
+	std::cout << "The game is over. " << name << " has won the game." << std::endl;
 }
 unsigned char GetPacketIdentifier(RakNet::Packet *packet)
 {
