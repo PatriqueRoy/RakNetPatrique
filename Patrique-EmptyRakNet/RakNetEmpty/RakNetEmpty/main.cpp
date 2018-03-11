@@ -31,6 +31,7 @@ bool Turn = false;
 int areReady = 0;
 int playCount = 1;
 int currentTurn = 1;
+int DeadPlayers = 0;
 
 RakNet::RakPeerInterface *g_rakPeerInterface = nullptr;
 RakNet::SystemAddress g_serverAddress;
@@ -57,6 +58,11 @@ enum {
 	ID_PLAYER_HEAL_P,
 	ID_PLAYER_ATTACK_C,
 	ID_PLAYER_ATTACK_P,
+	ID_PLAYER_ATTACK_E,
+	ID_PLAYER_DEAD_C,
+	ID_PLAYER_DEAD_P,
+	ID_GAMEOVER_W,
+	ID_GAMEOVER_L,
 };
 
 enum PlayerClass {
@@ -75,6 +81,7 @@ struct SPlayer
 	float attack;
 	float heal;
 	int Player;
+	bool alive = true;
 };
 
 std::map<unsigned long, SPlayer> m_players;
@@ -101,8 +108,39 @@ void OnConnectionAccepted(RakNet::Packet* packet)
 }
 //server
 void TurnCycle() {
+	
 	for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
 		if (it->second.Player == currentTurn) {
+			if (DeadPlayers == 2) {
+				RakNet::RakString name;
+				for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
+					if (it->second.alive == true)
+					{
+						name = it->second.name.c_str;
+					}
+				}
+				for (auto const& x : m_players) {
+					if (x.second.alive == true) {
+						
+						RakNet::BitStream bs;
+						bs.Write((RakNet::MessageID)ID_GAMEOVER_W);
+						
+						g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+						continue;
+					}
+
+					RakNet::BitStream bs;
+					bs.Write((RakNet::MessageID)ID_GAMEOVER_L);
+					bs.Write(name);
+
+					g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+				}
+				break;
+			}
+			if (it->second.alive == false) {
+				currentTurn++;
+				continue;
+			}
 			RakNet::BitStream bs;
 			bs.Write((RakNet::MessageID)ID_TURN);
 			bool Pturn = true;
@@ -135,32 +173,75 @@ void PlayerTurnAttack(RakNet::Packet* packet) {
 	std::cout << "Attack" << std::endl;
 	
 	SPlayer& player = it->second;
-
+	PlayerClass Eclass;
+	int Ehealth;
 	for (std::map<unsigned long, SPlayer>::iterator it = m_players.begin(); it != m_players.end(); ++it) {
 		if (userName == it->second.name) {
 
 			it->second.health = it->second.health - player.attack;
+			if (it->second.health < 0) {
+				it->second.health = 0;
+			}
+			Eclass = it->second.P_class;
+			Ehealth = it->second.health;
+			if (it->second.health <= 0) {
+				it->second.alive = false;
+				DeadPlayers++;
+				RakNet::BitStream wbs2;
+				wbs2.Write((RakNet::MessageID)ID_PLAYER_DEAD_C);
+				RakNet::RakString name = it->second.name.c_str();
+				wbs2.Write(name);
+				for (auto const& x : m_players)
+				{
+					if (x.second.address == it->second.address) {
+						RakNet::BitStream wbs2;
+						wbs2.Write((RakNet::MessageID)ID_PLAYER_DEAD_P);
+
+						g_rakPeerInterface->Send(&wbs2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+						continue;
+					}
+					g_rakPeerInterface->Send(&wbs2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+				}
+			}
 		}
 	}
 
 	RakNet::BitStream wbs;
 	wbs.Write((RakNet::MessageID)ID_PLAYER_ATTACK_C);
-	RakNet::RakString Ename = player.name.c_str();
-	wbs.Write(Ename);
-	PlayerClass Eclass = player.P_class;
+	RakNet::RakString Pname = player.name.c_str();
+	PlayerClass Pclass = player.P_class;
+	int Pattack = player.attack;
+	wbs.Write(Pname);
+	wbs.Write(name);
+	wbs.Write(Pclass);
 	wbs.Write(Eclass);
-	int Phealth = player.health;
-	wbs.Write(Phealth);
+	wbs.Write(Ehealth);
+	wbs.Write(Pattack);
 
 	for (auto const& x : m_players)
 	{
 		if (guid == x.first) {
-			RakNet::BitStream bs;
-			bs.Write((RakNet::MessageID)ID_PLAYER_ATTACK_P);
-			int Phealth = player.health;
-			bs.Write(Phealth);
+			RakNet::BitStream bs2;
+			bs2.Write((RakNet::MessageID)ID_PLAYER_ATTACK_P);
+			bs2.Write(name);
+			bs2.Write(Eclass);
+			int Pattack = player.attack;
+			bs2.Write(Pattack);
+			bs2.Write(Ehealth);
 
-			g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+			g_rakPeerInterface->Send(&bs2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
+			continue;
+		}
+		if (x.second.name == userName) {
+			RakNet::BitStream bs2;
+			bs2.Write((RakNet::MessageID)ID_PLAYER_ATTACK_E);
+			bs2.Write(Pname);
+			bs2.Write(Pclass);
+			int Pattack = player.attack;
+			bs2.Write(Pattack);
+			bs2.Write(Ehealth);
+
+			g_rakPeerInterface->Send(&bs2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
 			continue;
 		}
 		g_rakPeerInterface->Send(&wbs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, x.second.address, false);
@@ -252,13 +333,13 @@ void PlayerHealMsg(RakNet::Packet* packet) {
 	bs.Read(health);
 
 	if (Pclass == Warrior) {
-		std::cout << userName << " the warrior used heal. Health: " << health << std::endl;
+		std::cout << userName << " the warrior used heal. " << userName << "'s remaining health: " << health << std::endl;
 	}
 	if (Pclass == Rogue) {
-		std::cout << userName << " the rogue used heal. Health: " << health << std::endl;
+		std::cout << userName << " the warrior used heal. " << userName << "'s remaining health: " << health << std::endl;
 	}
 	if (Pclass == Mage) {
-		std::cout << userName << " the mage used heal. Health: " << health << std::endl;
+		std::cout << userName << " the warrior used heal. " << userName << "'s remaining health: " << health << std::endl;
 	}
 }
 //client
@@ -273,10 +354,103 @@ void PlayerHealMsgP(RakNet::Packet* packet) {
 }
 //client
 void PlayerAttackMsg(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString Pname;
+	bs.Read(Pname);
+	RakNet::RakString Ename;
+	bs.Read(Ename);
+	PlayerClass Pclass;
+	bs.Read(Pclass);
+	PlayerClass Eclass;
+	bs.Read(Eclass);
+	int Ehealth;
+	bs.Read(Ehealth);
+	int Pattack;
+	bs.Read(Pattack);
 
+	if (Pclass == Warrior) {
+		if (Eclass == Warrior) {
+			std::cout << Pname << " the warrior attacked " << Ename << " The warrior for " << Pattack << " damage. "<< Ename << "'s remaining health: "<< Ehealth << std::endl;
+		}
+		if (Eclass == Rogue) {
+			std::cout << Pname << " the warrior attacked " << Ename << " The rogue for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+		}
+		if (Eclass == Mage) {
+			std::cout << Pname << " the warrior attacked " << Ename << " The mage for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+		}
+	}
+	if (Pclass == Rogue) {
+		if (Eclass == Warrior) {
+			std::cout << Pname << " the rogue attacked " << Ename << " The warrior for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+		}
+		if (Eclass == Rogue) {
+			std::cout << Pname << " the rogue attacked " << Ename << " The rogue for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+		}
+		if (Eclass == Mage) {
+			std::cout << Pname << " the rogue attacked " << Ename << " The mage for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+		}
+	}
+	if (Pclass == Mage) {
+		if (Eclass == Warrior) {
+			std::cout << Pname << " the mage attacked " << Ename << " The warrior for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+		}
+		if (Eclass == Rogue) {
+			std::cout << Pname << " the mage attacked " << Ename << " The rogue for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+		}
+		if (Eclass == Mage) {
+			std::cout << Pname << " the mage attacked " << Ename << " The mage for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+		}
+	}
 }
+//client
 void PlayerAttackMsgP(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString Ename;
+	bs.Read(Ename);
+	PlayerClass Eclass;
+	bs.Read(Eclass);
+	int Pattack;
+	bs.Read(Pattack);
+	int Ehealth;
+	bs.Read(Ehealth);
+	
+	if (Eclass == Warrior) {
+		std::cout << "You attacked " << Ename << " The warrior for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+	}
+	if (Eclass == Rogue) {
+		std::cout << "You attacked " << Ename << " The rogue for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+	}
+	if (Eclass == Mage) {
+		std::cout << "You attacked " << Ename << " The mage for " << Pattack << " damage. " << Ename << "'s remaining health: " << Ehealth << std::endl;
+	}
+}
+//client
+void PlayerAttackMsgE(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString Pname;
+	bs.Read(Pname);
+	PlayerClass Pclass;
+	bs.Read(Pclass);
+	int Pattack;
+	bs.Read(Pattack);
+	int Ehealth;
+	bs.Read(Ehealth);
 
+	if (Pclass == Warrior) {
+		std::cout << Pname << " the warrior attacked you for " << Pattack << " damage. You have " << Ehealth << " health remaining." << std::endl;
+	}
+	if (Pclass == Rogue) {
+		std::cout << Pname << " the rogue attacked you for " << Pattack << " damage. You have " << Ehealth << " health remaining." << std::endl;
+	}
+	if (Pclass == Mage) {
+		std::cout << Pname << " the mage attacked you for " << Pattack << " damage. You have " << Ehealth << " health remaining." << std::endl;
+	}
 }
 //server
 void OnLobbyReady(RakNet::Packet* packet)
@@ -528,6 +702,30 @@ void DisplayHealthP(RakNet::Packet* packet) {
 	std::cout << "Your health: " << health << std::endl;
 }
 
+//client
+void OnPlayerDead(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+	RakNet::RakString name;
+	bs.Read(name);
+
+	std::cout << name << " died." << std::endl;
+}
+//client
+void OnPlayerDeadP(RakNet::Packet* packet) {
+	RakNet::BitStream bs(packet->data, packet->length, false);
+	RakNet::MessageID messageId;
+	bs.Read(messageId);
+
+	std::cout << "You died" << std::endl;
+}
+void OnPlayerWin(RakNet::Packet* packet) {
+
+}
+void OnPlayerLose(RakNet::Packet* packet) {
+
+}
 unsigned char GetPacketIdentifier(RakNet::Packet *packet)
 {
 	if (packet == nullptr)
@@ -647,6 +845,9 @@ void InputHandler()
 					g_rakPeerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, g_serverAddress, false);
 				}
 			}
+		}
+		else if (g_networkState == NS_SERVER_GAME) {
+			
 		}
 		std::this_thread::sleep_for(std::chrono::microseconds(100));
 	}
@@ -783,10 +984,25 @@ void PacketHandler()
 					PlayerHealMsgP(packet);
 					break;
 				case ID_PLAYER_ATTACK_C:
-					break;
 					PlayerAttackMsg(packet);
+					break;
 				case ID_PLAYER_ATTACK_P:
 					PlayerAttackMsgP(packet);
+					break;
+				case ID_PLAYER_ATTACK_E:
+					PlayerAttackMsgE(packet);
+					break;
+				case ID_PLAYER_DEAD_C:
+					OnPlayerDead(packet);
+					break;
+				case ID_PLAYER_DEAD_P:
+					OnPlayerDeadP(packet);
+					break;
+				case ID_GAMEOVER_W:
+					OnPlayerWin(packet);
+					break;
+				case ID_GAMEOVER_L:
+					OnPlayerLose(packet);
 					break;
 				default:
 					break;
@@ -847,9 +1063,7 @@ int main()
 			}
 		}
 
-		if (g_networkState == NS_SERVER_GAME) {
-			
-		}
+		
 	}
 
 	//std::cout << "press q and then return to exit" << std::endl;
