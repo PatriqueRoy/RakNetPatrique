@@ -1,9 +1,2 @@
-﻿  main.cpp
-c:\users\vanessa\documents\github\raknetpatrique\patrique-emptyraknet\raknetempty\raknetempty\main.cpp(190): warning C4244: '=': conversion from 'float' to 'int', possible loss of data
-c:\users\vanessa\documents\github\raknetpatrique\patrique-emptyraknet\raknetempty\raknetempty\main.cpp(217): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
-c:\users\vanessa\documents\github\raknetpatrique\patrique-emptyraknet\raknetempty\raknetempty\main.cpp(232): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
-c:\users\vanessa\documents\github\raknetpatrique\patrique-emptyraknet\raknetempty\raknetempty\main.cpp(244): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
-c:\users\vanessa\documents\github\raknetpatrique\patrique-emptyraknet\raknetempty\raknetempty\main.cpp(304): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
-c:\users\vanessa\documents\github\raknetpatrique\patrique-emptyraknet\raknetempty\raknetempty\main.cpp(312): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
-c:\users\vanessa\documents\github\raknetpatrique\patrique-emptyraknet\raknetempty\raknetempty\main.cpp(885): warning C4477: 'printf' : format string '%I64u' requires an argument of type 'unsigned __int64', but variadic argument 1 has type 'RakNet::RakNetGUID'
-  RakNetEmpty.vcxproj -> C:\Users\Vanessa\Documents\GitHub\RakNetPatrique\Patrique-EmptyRakNet\RakNetEmpty\Debug\RakNetEmpty.exe
+﻿  RakNetEmpty.vcxproj -> C:\Users\Tech\Desktop\RakNetPatrique\Patrique-EmptyRakNet\RakNetEmpty\Debug\RakNetEmpty.exe
+  RakNetEmpty.vcxproj -> C:\Users\Tech\Desktop\RakNetPatrique\Patrique-EmptyRakNet\RakNetEmpty\Debug\RakNetEmpty.pdb (Partial PDB)
